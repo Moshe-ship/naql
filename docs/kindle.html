@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>naql — Arabic Model Format Converter</title>
+<meta name="description" content="Inspect, convert, and validate ML models. Preserve your Arabic tokenizer.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,300;0,7..72,400;0,7..72,500;0,7..72,700;1,7..72,300;1,7..72,400&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --paper:#f7f3eb;--paper2:#efe9dd;--paper3:#e6dfd0;
+  --ink:#2c2416;--ink2:#5c5244;--ink3:#8a7f6f;--ink4:#b5ac9a;
+  --accent:#1e4d8c;--blue:#1a5276;--green:#2d6a4f;--amber:#92400e;
+  --highlight:rgba(30,77,140,.06);
+  --font:'Literata',Georgia,serif;--mono:'JetBrains Mono',monospace;
+  --max:740px;--radius:3px;
+}
+html{scroll-behavior:smooth;background:var(--paper)}
+body{font-family:var(--font);color:var(--ink);background:var(--paper);line-height:1.75;overflow-x:hidden;-webkit-font-smoothing:antialiased;font-size:16px}
+a{color:var(--accent);text-decoration:underline;text-decoration-color:var(--ink4);text-underline-offset:3px}
+a:hover{text-decoration-color:var(--accent)}
+::selection{background:rgba(30,77,140,.15);color:var(--ink)}
+code{font-family:var(--mono);font-size:.82em;background:var(--paper2);padding:.15em .35em;border-radius:2px;color:var(--accent)}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;opacity:.025;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+.page-wrap{max-width:calc(var(--max) + 6rem);margin:0 auto;position:relative;min-height:100vh}
+.page-wrap::before,.page-wrap::after{content:'';position:fixed;top:0;bottom:0;width:1px;background:var(--paper3)}
+.page-wrap::before{left:calc(50% - var(--max)/2 - 2.5rem)}
+.page-wrap::after{right:calc(50% - var(--max)/2 - 2.5rem)}
+@media(max-width:900px){.page-wrap::before,.page-wrap::after{display:none}}
+
+nav{max-width:var(--max);margin:0 auto;padding:1.5rem 1.5rem 0;display:flex;justify-content:space-between;align-items:baseline;font-size:.82rem}
+nav .logo{font-family:var(--mono);font-weight:700;color:var(--ink);letter-spacing:-.02em}
+nav .logo .v{color:var(--ink3);font-weight:400;font-size:.75em}
+.nav-r{display:flex;gap:.8rem;align-items:baseline}
+.nav-r a{color:var(--ink3);text-decoration:none;font-size:.75rem}
+.nav-r a:hover{color:var(--ink)}
+.gh-link,.theme-toggle{font-family:var(--mono);font-size:.7rem;padding:.2rem .5rem;border:1px solid var(--ink4);border-radius:2px;color:var(--ink2);text-decoration:none;transition:all .2s;display:inline-flex;align-items:center;gap:.25rem}
+.gh-link:hover{border-color:var(--accent);color:var(--accent)}
+.theme-toggle:hover{border-color:var(--ink);color:var(--ink)}
+.theme-toggle svg{width:12px;height:12px;fill:currentColor}
+
+hr{border:none;border-top:1px solid var(--paper3);margin:2rem 0}
+.thick-hr{border-top:2px solid var(--ink);margin:1.5rem 0}
+
+.hero{max-width:var(--max);margin:0 auto;padding:3.5rem 1.5rem 1.5rem;text-align:center}
+h1{font-size:clamp(2.5rem,7vw,3.5rem);font-weight:700;line-height:.95;letter-spacing:-.03em;color:var(--ink)}
+h1 .ar{display:block;font-size:.5em;color:var(--accent);margin-top:.3rem;letter-spacing:0}
+.hero-sub{font-size:1rem;color:var(--ink2);max-width:480px;margin:1.2rem auto 0;font-weight:300;font-style:italic;line-height:1.7;word-wrap:break-word;padding:0 .5rem}
+.hero-sub strong{color:var(--ink);font-weight:500;font-style:normal}
+
+.stat-box{max-width:var(--max);margin:0 auto;padding:0 1.5rem}
+.stat-inner{background:var(--highlight);border-left:3px solid var(--accent);padding:1rem 1.2rem;font-size:.9rem;line-height:1.6}
+.stat-inner .num{font-family:var(--mono);font-weight:700;color:var(--blue)}
+
+.install-box{max-width:var(--max);margin:1.2rem auto 0;padding:0 1.5rem}
+.install-inner{display:flex;align-items:center;gap:.5rem;background:var(--ink);color:var(--paper);padding:.45rem .45rem .45rem .9rem;border-radius:var(--radius);font-family:var(--mono);font-size:.8rem}
+.install-inner .pr{color:var(--ink4);user-select:none}
+.install-inner code{flex:1;background:none;color:#c8b88a;padding:0;font-size:.8rem}
+.install-inner button{background:var(--accent);color:var(--paper);border:none;padding:.4rem .8rem;border-radius:2px;cursor:pointer;font-family:var(--mono);font-size:.7rem;font-weight:700;transition:all .2s}
+.install-inner button:hover{opacity:.85}
+.install-inner button.copied{background:var(--green)}
+
+.section{max-width:var(--max);margin:0 auto;padding:2.5rem 1.5rem}
+.ch-num{font-family:var(--mono);font-size:.6rem;text-transform:uppercase;letter-spacing:.2em;color:var(--ink4);margin-bottom:.3rem}
+.ch-title{font-size:1.4rem;font-weight:700;color:var(--ink);letter-spacing:-.02em;margin-bottom:.3rem}
+.ch-desc{color:var(--ink2);font-size:.88rem;margin-bottom:1.5rem;font-style:italic;word-wrap:break-word}
+
+/* PROBLEM */
+.problem-text{font-size:.9rem;color:var(--ink2);line-height:1.8;background:var(--highlight);border-left:3px solid var(--accent);padding:1rem 1.2rem}
+.problem-text strong{color:var(--ink);font-weight:500}
+
+/* FORMAT LIST */
+.fmt-list{list-style:none;columns:2;column-gap:1.5rem}
+.fmt-list li{break-inside:avoid;padding:.5rem 0;border-bottom:1px solid var(--paper3);font-size:.85rem;line-height:1.5}
+.fmt-list .name{font-family:var(--mono);font-size:.8rem;color:var(--accent);font-weight:500}
+.fmt-list .ext{color:var(--ink2);font-size:.75rem}
+
+/* ARABIC CHECK */
+.arabic-grid{display:grid;grid-template-columns:1fr 1fr;gap:.8rem}
+.arabic-card{padding:1.2rem;background:var(--paper2);border:1px solid var(--paper3);border-radius:var(--radius)}
+.arabic-card h3{font-family:var(--mono);font-size:.78rem;color:var(--accent);margin-bottom:.4rem;font-weight:500}
+.arabic-card p{font-size:.78rem;color:var(--ink2);line-height:1.6}
+.arabic-card .check{font-family:var(--mono);font-size:.7rem;color:var(--green);margin-top:.3rem}
+
+/* MATRIX TABLE */
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.table-wrap table{width:100%;border-collapse:collapse;font-size:.75rem}
+.table-wrap th{font-family:var(--mono);text-align:center;padding:.45rem .5rem;color:var(--ink3);font-weight:400;font-size:.58rem;text-transform:uppercase;letter-spacing:.1em;border-bottom:2px solid var(--ink)}
+.table-wrap th:first-child{text-align:left}
+.table-wrap td{padding:.4rem .5rem;border-bottom:1px solid var(--paper3);text-align:center}
+.table-wrap td:first-child{text-align:left;font-family:var(--mono);font-weight:700;color:var(--ink);font-size:.75rem}
+.table-wrap tr:last-child td{border:none}
+.table-wrap tr:hover td{background:var(--highlight)}
+.table-wrap .y{color:var(--green);font-weight:700}
+.table-wrap .n{color:var(--ink4)}
+
+/* COMMANDS */
+.cmd-list{list-style:none;columns:2;column-gap:1.5rem}
+.cmd-list li{break-inside:avoid;padding:.5rem 0;border-bottom:1px solid var(--paper3);font-size:.85rem;line-height:1.5}
+.cmd-list .flag{font-family:var(--mono);font-size:.78rem;color:var(--accent);font-weight:500}
+.cmd-list .desc{color:var(--ink2);font-size:.78rem}
+
+/* TERMINAL */
+.term{background:var(--ink);border-radius:var(--radius);overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.08)}
+.term-bar{display:flex;gap:5px;padding:8px 12px;background:rgba(0,0,0,.2)}
+.term-bar i{width:8px;height:8px;border-radius:50%;display:block}
+.term-bar .r{background:#e06c75}.term-bar .y{background:#e5c07b}.term-bar .g{background:#98c379}
+.term-body{padding:1rem;font-family:var(--mono);font-size:.72rem;line-height:2;color:#abb2bf;overflow-x:auto;-webkit-overflow-scrolling:touch;white-space:pre;word-break:normal}
+.term-body .p{color:#98c379;user-select:none}
+.term-body .c{color:#e5c07b}
+.term-body .cm{color:#5c6370}
+.term-body .out{color:#61afef}
+
+/* TOOL GRID */
+.tool-grid{display:flex;flex-wrap:wrap;gap:.3rem;justify-content:center;margin-top:.8rem}
+.tool-grid a{font-family:var(--mono);font-size:.65rem;padding:.15rem .4rem;border:1px solid var(--ink4);border-radius:2px;color:var(--ink2);text-decoration:none;transition:all .2s}
+.tool-grid a:hover{border-color:var(--accent);color:var(--accent)}
+.tool-grid a.current{border-color:var(--accent);color:var(--accent);font-weight:700}
+
+footer{max-width:var(--max);margin:0 auto;text-align:center;padding:2rem 1.5rem 3rem;font-size:.75rem;color:var(--ink3)}
+footer a{color:var(--ink2)}
+
+[data-a]{opacity:0;transform:translateY(14px);transition:opacity .6s ease,transform .6s ease}
+[data-a].v{opacity:1;transform:none}
+
+/* === TABLET (max 768px) === */
+@media(max-width:768px){
+  .section{padding:2rem 1rem}
+  .hero{padding:2.5rem 1rem 1rem}
+  .fmt-list{columns:2}
+  .arabic-grid{grid-template-columns:1fr 1fr}
+  .cmd-list{columns:2}
+  .ch-title{font-size:1.25rem}
+}
+
+/* === MOBILE (max 600px) === */
+@media(max-width:600px){
+  .section{padding:1.8rem 1rem}
+  .hero{padding:2.5rem 1rem 1rem}
+  h1{font-size:clamp(2rem,7vw,3.5rem)}
+  h1 .ar{font-size:.45em}
+  .hero-sub{font-size:.88rem;padding:0 .25rem}
+  .fmt-list{columns:1}
+  .arabic-grid{grid-template-columns:1fr}
+  .arabic-card{padding:1rem}
+  .arabic-card h3{font-size:.72rem}
+  .arabic-card p{font-size:.72rem}
+  .cmd-list{columns:1}
+  .install-box{padding:0 1rem}
+  .install-inner{flex-wrap:wrap;gap:.3rem;padding:.4rem}
+  .install-inner .pr{display:none}
+  .install-inner code{flex:none;font-size:.72rem;word-break:break-all}
+  .install-inner button{width:100%}
+  .stat-box{padding:0 1rem}
+  .stat-inner{font-size:.82rem;padding:.8rem}
+  .problem-text{font-size:.82rem;padding:.8rem}
+  .table-wrap{margin:0 -.5rem}
+  .table-wrap table{font-size:.65rem;min-width:480px}
+  .table-wrap th,.table-wrap td{padding:.35rem .4rem}
+  .term{border-radius:0}
+  .term-body{font-size:.62rem;padding:.8rem}
+  nav{padding:1rem 1rem 0;flex-wrap:wrap;gap:.4rem}
+  .nav-r{gap:.5rem}
+  .ch-title{font-size:1.2rem}
+  .ch-desc{font-size:.82rem}
+  footer{padding:1.5rem 1rem 2rem}
+  footer p{font-size:.68rem!important}
+  .tool-grid a{font-size:.58rem;padding:.12rem .3rem}
+}
+
+/* === SMALL MOBILE (max 380px) === */
+@media(max-width:380px){
+  .hero{padding:2rem .5rem .8rem}
+  .section{padding:1.2rem .5rem}
+  h1{font-size:1.8rem}
+  h1 .ar{font-size:.4em}
+  .hero-sub{font-size:.82rem}
+  .nav-r a:not(.gh-link):not(.theme-toggle){display:none}
+  .stat-inner{font-size:.78rem;padding:.6rem .8rem}
+  .problem-text{font-size:.78rem;padding:.6rem .8rem}
+  .table-wrap table{min-width:420px}
+  .arabic-card pre{font-size:.65rem}
+}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+
+<nav>
+  <div class="logo">naql <span class="v">v0.1</span></div>
+  <div class="nav-r">
+    <a href="#formats">Formats</a>
+    <a href="#matrix">Matrix</a>
+    <a href="#commands">Commands</a>
+    <a href="index.html" class="theme-toggle"><svg viewBox="0 0 24 24"><path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM2 13h2c.55 0 1-.45 1-1s-.45-1-1-1H2c-.55 0-1 .45-1 1s.45 1 1 1zm18 0h2c.55 0 1-.45 1-1s-.45-1-1-1h-2c-.55 0-1 .45-1 1s.45 1 1 1zM11 2v2c0 .55.45 1 1 1s1-.45 1-1V2c0-.55-.45-1-1-1s-1 .45-1 1zm0 18v2c0 .55.45 1 1 1s1-.45 1-1v-2c0-.55-.45-1-1-1s-1 .45-1 1z"/></svg>Dark</a>
+    <a href="https://github.com/Moshe-ship/naql" class="gh-link">GitHub</a>
+  </div>
+</nav>
+
+<section class="hero">
+  <h1>naql<span class="ar">نقل</span></h1>
+  <p class="hero-sub">Inspect, convert, and validate ML models. <strong>Preserve your Arabic tokenizer.</strong></p>
+</section>
+
+<div class="stat-box" data-a>
+  <div class="stat-inner">
+    <span class="num">6 formats</span> supported &middot; Arabic tokenizer validation &middot; lightweight — no torch/mlx/onnx dependency
+  </div>
+</div>
+
+<div class="install-box" data-a>
+  <div class="install-inner">
+    <span class="pr">$</span>
+    <code>pip install naql</code>
+    <button onclick="doCopy(this)">Copy</button>
+  </div>
+</div>
+
+<div class="section"><hr class="thick-hr"></div>
+
+<section class="section" id="problem">
+  <div class="ch-num">Chapter I</div>
+  <div class="ch-title">The Problem</div>
+  <div class="ch-desc">Converting models breaks Arabic tokenizers.</div>
+  <div class="problem-text" data-a>
+    You fine-tune a model with <strong>Arabic support</strong>. You convert it from HuggingFace to GGUF for deployment. The conversion silently drops Arabic tokens, shifts vocab indices, or corrupts diacritics. Your model now outputs <strong>gibberish for Arabic</strong> while English still works fine. naql catches this before it reaches production.
+  </div>
+</section>
+
+<div class="section"><hr></div>
+
+<section class="section" id="formats">
+  <div class="ch-num">Chapter II</div>
+  <div class="ch-title">6 Formats</div>
+  <div class="ch-desc">Read model headers directly. No heavy framework required.</div>
+  <ul class="fmt-list" data-a>
+    <li><span class="name">GGUF</span><br><span class="ext">llama.cpp quantized models — .gguf files</span></li>
+    <li><span class="name">SafeTensors</span><br><span class="ext">HuggingFace safe format — .safetensors files</span></li>
+    <li><span class="name">ONNX</span><br><span class="ext">Open Neural Network Exchange — .onnx files</span></li>
+    <li><span class="name">MLX</span><br><span class="ext">Apple MLX framework — weights.npz + config.json</span></li>
+    <li><span class="name">PyTorch</span><br><span class="ext">Native checkpoints — .pt, .bin files</span></li>
+    <li><span class="name">HuggingFace</span><br><span class="ext">Model directories with config, tokenizer, weights</span></li>
+  </ul>
+</section>
+
+<div class="section"><hr></div>
+
+<section class="section" id="arabic">
+  <div class="ch-num">Chapter III</div>
+  <div class="ch-title">Arabic Check</div>
+  <div class="ch-desc">Verify Arabic tokenizer preservation before and after conversion.</div>
+  <div class="arabic-grid">
+    <div class="arabic-card" data-a>
+      <h3>Coverage Scan</h3>
+      <p>Counts Arabic tokens in the vocabulary. Reports percentage, character coverage, and script distribution.</p>
+      <div class="check">naql arabic model/</div>
+    </div>
+    <div class="arabic-card" data-a>
+      <h3>Validation</h3>
+      <p>Compares source and target tokenizers. Catches dropped tokens, shifted indices, and corrupted diacritics.</p>
+      <div class="check">naql validate source/ target/</div>
+    </div>
+    <div class="arabic-card" data-a>
+      <h3>28 Base Letters</h3>
+      <p>Verifies all 28 Arabic letters, tashkeel diacritics, Arabic digits, and common bigrams are present.</p>
+      <div class="check">All 28 base letters covered</div>
+    </div>
+    <div class="arabic-card" data-a>
+      <h3>Bigram Coverage</h3>
+      <p>Tests common Arabic bigrams against the tokenizer. Low coverage means over-tokenized Arabic text.</p>
+      <div class="check">94% bigram coverage</div>
+    </div>
+  </div>
+</section>
+
+<div class="section"><hr></div>
+
+<section class="section" id="matrix">
+  <div class="ch-num">Chapter IV</div>
+  <div class="ch-title">Conversion Matrix</div>
+  <div class="ch-desc">What converts to what. naql generates the command and validates the output.</div>
+  <div class="table-wrap" data-a>
+  <table>
+    <thead>
+      <tr>
+        <th>From / To</th>
+        <th>GGUF</th>
+        <th>SafeTensors</th>
+        <th>ONNX</th>
+        <th>MLX</th>
+        <th>PyTorch</th>
+        <th>HF</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>GGUF</td><td class="n">-</td><td class="y">Yes</td><td class="n">-</td><td class="y">Yes</td><td class="n">-</td><td class="y">Yes</td></tr>
+      <tr><td>SafeTensors</td><td class="y">Yes</td><td class="n">-</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td></tr>
+      <tr><td>ONNX</td><td class="n">-</td><td class="y">Yes</td><td class="n">-</td><td class="n">-</td><td class="y">Yes</td><td class="n">-</td></tr>
+      <tr><td>MLX</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">-</td><td class="n">-</td><td class="n">-</td><td class="y">Yes</td></tr>
+      <tr><td>PyTorch</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">-</td><td class="y">Yes</td></tr>
+      <tr><td>HuggingFace</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">-</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<div class="section"><hr></div>
+
+<section class="section" id="commands">
+  <div class="ch-num">Chapter V</div>
+  <div class="ch-title">Commands</div>
+  <div class="ch-desc">6 commands. Zero config.</div>
+  <ul class="cmd-list" data-a>
+    <li><span class="flag">inspect</span><br><span class="desc">Read model format, size, quantization, layers, and vocab</span></li>
+    <li><span class="flag">arabic</span><br><span class="desc">Scan tokenizer vocab for Arabic token coverage</span></li>
+    <li><span class="flag">convert</span><br><span class="desc">Convert between formats with Arabic validation</span></li>
+    <li><span class="flag">validate</span><br><span class="desc">Compare source and target after conversion</span></li>
+    <li><span class="flag">formats</span><br><span class="desc">List supported formats and conversion paths</span></li>
+    <li><span class="flag">explain</span><br><span class="desc">Show how naql works — detection, conversion, validation</span></li>
+  </ul>
+</section>
+
+<div class="section"><hr></div>
+
+<section class="section">
+  <div class="ch-num">Chapter VI</div>
+  <div class="ch-title">Get Started</div>
+  <div class="term" data-a>
+    <div class="term-bar"><i class="r"></i><i class="y"></i><i class="g"></i></div>
+    <div class="term-body">
+<span class="cm"># Install</span>
+<span class="p">$ </span><span class="c">pip install naql</span>
+
+<span class="cm"># Inspect a model</span>
+<span class="p">$ </span><span class="c">naql inspect model.gguf</span>
+<span class="out">Format: GGUF  Quant: Q4_K_M  Params: 2.5B  Vocab: 151,936</span>
+
+<span class="cm"># Check Arabic tokenizer</span>
+<span class="p">$ </span><span class="c">naql arabic model/</span>
+<span class="out">Arabic tokens: 4,217 (2.8%)  Letters: 28/28  Verdict: GOOD</span>
+
+<span class="cm"># Convert to MLX</span>
+<span class="p">$ </span><span class="c">naql convert model/ --to mlx</span>
+<span class="out">Converting HuggingFace -> MLX... done. Arabic check: PASS</span>
+
+<span class="cm"># Validate the conversion</span>
+<span class="p">$ </span><span class="c">naql validate model/ model-mlx/</span>
+<span class="out">Vocab match: 151,936/151,936  Arabic tokens: preserved  OK</span>
+    </div>
+  </div>
+</section>
+
+<div class="section"><hr class="thick-hr"></div>
+
+<footer>
+  <p style="font-size:.85rem;color:var(--ink2);margin-bottom:.5rem;line-height:1.5" dir="rtl">مقدمة من <a href="https://x.com/i/communities/2032184341682643429">مجتمع الذكاء الاصطناعي السعودي</a> للعرب أولا وللعالم أجمع</p>
+  <p style="font-size:.78rem;color:var(--ink3);margin-bottom:.7rem;font-style:italic">Brought to you by the <a href="https://x.com/i/communities/2032184341682643429" style="color:var(--ink2)">Saudi AI Community</a> — for Arabs first, and the world at large.</p>
+  <div class="tool-grid">
+    <a href="https://github.com/Moshe-ship/artok">artok</a>
+    <a href="https://github.com/Moshe-ship/bidi-guard">bidi-guard</a>
+    <a href="https://github.com/Moshe-ship/arabench">arabench</a>
+    <a href="https://github.com/Moshe-ship/majal">majal</a>
+    <a href="https://github.com/Moshe-ship/khalas">khalas</a>
+    <a href="https://github.com/Moshe-ship/safha">safha</a>
+    <a href="https://github.com/Moshe-ship/raqeeb">raqeeb</a>
+    <a href="https://github.com/Moshe-ship/sarih">sarih</a>
+    <a href="https://github.com/Moshe-ship/qalam">qalam</a>
+    <a href="https://github.com/Moshe-ship/naql" class="current">naql</a>
+  </div>
+  <p style="margin-top:.7rem">MIT License &middot; <a href="https://github.com/Moshe-ship">Musa the Carpenter</a> &middot; <a href="https://github.com/Moshe-ship/naql">GitHub</a></p>
+</footer>
+
+</div>
+
+<script>
+function doCopy(b){navigator.clipboard.writeText('pip install naql');b.textContent='Copied!';b.classList.add('copied');setTimeout(()=>{b.textContent='Copy';b.classList.remove('copied')},1500)}
+const io=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('v');io.unobserve(e.target)}})},{threshold:.08,rootMargin:'0px 0px -30px 0px'});
+document.querySelectorAll('[data-a]').forEach(el=>io.observe(el));
+</script>
+</body>
+</html>

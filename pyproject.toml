@@ -1,0 +1,29 @@
+[project]
+name = "naql"
+version = "0.1.0"
+description = "Arabic Model Format Converter - inspect, convert, and validate AI models"
+requires-python = ">=3.9"
+license = "MIT"
+authors = [{ name = "Musa the Carpenter" }]
+readme = "README.md"
+keywords = ["ai", "model", "converter", "arabic", "gguf", "mlx", "onnx", "safetensors"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "rich>=13.0.0",
+]
+
+[project.scripts]
+naql = "naql.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"

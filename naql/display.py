@@ -23,6 +23,9 @@ FORMATS = {
     "mlx": "MLX (Apple Silicon)",
     "onnx": "ONNX Runtime",
     "safetensors": "Safetensors (raw weights)",
+    "gptq": "GPTQ (GPU quantized, AutoGPTQ)",
+    "awq": "AWQ (Activation-aware Weight Quantization)",
+    "jang": "JANG (JAX Angular, experimental)",
 }
 
 # Conversion paths: (source, target) -> (tool, install_hint)
@@ -37,6 +40,10 @@ CONVERSION_PATHS: dict[tuple[str, str], tuple[str, str]] = {
     ("safetensors", "hf"): ("transformers", "pip install transformers"),
     ("safetensors", "gguf"): ("llama.cpp convert", "brew install llama.cpp"),
     ("onnx", "hf"): ("optimum", "pip install optimum[onnxruntime]"),
+    ("hf", "gptq"): ("auto-gptq", "pip install auto-gptq"),
+    ("hf", "awq"): ("autoawq", "pip install autoawq"),
+    ("gptq", "gguf"): ("llama.cpp convert", "git clone https://github.com/ggerganov/llama.cpp"),
+    ("awq", "gguf"): ("llama.cpp convert", "git clone https://github.com/ggerganov/llama.cpp"),
 }
 
 
@@ -114,6 +121,9 @@ def display_arabic_check(result: dict) -> None:
     total = result.get("total_vocab", 0)
     ratio = result.get("arabic_ratio", 0.0)
     tokenizer_type = result.get("tokenizer_type", "unknown")
+    bigram_count = result.get("arabic_bigram_count", 0)
+    common_words = result.get("common_words_list", [])
+    efficiency = result.get("arabic_efficiency_score", 0)
 
     if has_arabic:
         console.print("  [bold green]Arabic support detected[/bold green]")
@@ -135,6 +145,24 @@ def display_arabic_check(result: dict) -> None:
     table.add_row("Total Vocab", str(total))
     table.add_row("Arabic Tokens", str(count))
     table.add_row("Arabic Ratio", f"{ratio:.1%}")
+    table.add_row("Arabic Bigrams", str(bigram_count))
+
+    # Efficiency score with color coding.
+    if efficiency >= 70:
+        eff_str = f"[bold green]{efficiency}/100[/bold green]"
+    elif efficiency >= 40:
+        eff_str = f"[bold yellow]{efficiency}/100[/bold yellow]"
+    else:
+        eff_str = f"[bold red]{efficiency}/100[/bold red]"
+    table.add_row("Efficiency Score", eff_str)
+
+    # Common Arabic words found.
+    if common_words:
+        words_str = ", ".join(common_words)
+        table.add_row("Common Words", f"[dim]{words_str}[/dim]")
+    else:
+        table.add_row("Common Words", "[dim]none found[/dim]")
+
     table.add_row(
         "Verdict",
         "[green]Good[/green]" if has_arabic else "[red]No Arabic support[/red]",
@@ -265,6 +293,82 @@ def display_validate(issues: list[dict]) -> None:
     console.print()
 
 
+# ── Diff display ──────────────────────────────────────────────────
+
+
+def display_diff(
+    diffs: list[dict],
+    source_info: ModelInfo,
+    target_info: ModelInfo,
+) -> None:
+    """Show side-by-side model comparison as a Rich table."""
+    console.print()
+    console.print(BRANDING)
+    console.print()
+
+    console.print(f"  [bold cyan]Source:[/bold cyan] {source_info.path}  [dim]({source_info.format})[/dim]")
+    console.print(f"  [bold cyan]Target:[/bold cyan] {target_info.path}  [dim]({target_info.format})[/dim]")
+    console.print()
+
+    table = Table(
+        show_header=True,
+        header_style="bold cyan",
+        border_style="dim",
+        padding=(0, 1),
+        min_width=60,
+    )
+    table.add_column("Field", style="bold white", min_width=16)
+    table.add_column("Source", style="white", min_width=14)
+    table.add_column("Target", style="white", min_width=14)
+    table.add_column("Status", justify="center", min_width=8)
+
+    for diff in diffs:
+        status = diff.get("status", "mismatch")
+        if status == "match":
+            icon = "[green]OK[/green]"
+        elif status == "warning":
+            icon = "[yellow]WARN[/yellow]"
+        else:
+            icon = "[red]DIFF[/red]"
+
+        src_val = diff.get("source", "")
+        tgt_val = diff.get("target", "")
+
+        # Color the values based on status.
+        if status == "match":
+            src_style = f"[green]{src_val}[/green]"
+            tgt_style = f"[green]{tgt_val}[/green]"
+        elif status == "warning":
+            src_style = f"[yellow]{src_val}[/yellow]"
+            tgt_style = f"[yellow]{tgt_val}[/yellow]"
+        else:
+            src_style = f"[red]{src_val}[/red]"
+            tgt_style = f"[red]{tgt_val}[/red]"
+
+        table.add_row(diff.get("field", ""), src_style, tgt_style, icon)
+
+    console.print(table)
+
+    # Summary line.
+    matches = sum(1 for d in diffs if d.get("status") == "match")
+    total = len(diffs)
+    if matches == total:
+        console.print(f"\n  [bold green]All {total} fields match.[/bold green]")
+    else:
+        mismatches = sum(1 for d in diffs if d.get("status") == "mismatch")
+        warnings = sum(1 for d in diffs if d.get("status") == "warning")
+        parts = []
+        if matches:
+            parts.append(f"[green]{matches} match[/green]")
+        if warnings:
+            parts.append(f"[yellow]{warnings} warning(s)[/yellow]")
+        if mismatches:
+            parts.append(f"[red]{mismatches} mismatch(es)[/red]")
+        console.print(f"\n  {', '.join(parts)}")
+
+    console.print()
+
+
 # ── JSON output ───────────────────────────────────────────────────
 
 
@@ -315,4 +419,5 @@ def display_explain() -> None:
     console.print("  2. [bold cyan]naql arabic model/[/bold cyan]           Check Arabic support")
     console.print("  3. [bold cyan]naql convert model/ --to gguf[/bold cyan] Get the conversion command")
     console.print("  4. [bold cyan]naql validate src/ out/[/bold cyan]      Verify the conversion")
+    console.print("  5. [bold cyan]naql diff model1/ model2/[/bold cyan]    Compare two models")
     console.print()

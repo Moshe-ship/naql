@@ -239,7 +239,7 @@ footer a{color:var(--fg2)}
   <h1>naql<span class="ar">نقل</span></h1>
   <p class="hero-sub">Inspect, convert, and validate ML models. <strong>Preserve your Arabic tokenizer.</strong></p>
   <div class="stat-pill glass">
-    <span class="stat">6 formats</span>
+    <span class="stat">8 formats</span>
     <span class="sep">&middot;</span>
     <span class="stat">Arabic check</span>
     <span class="sep">&middot;</span>
@@ -262,7 +262,7 @@ footer a{color:var(--fg2)}
 
 <section class="section" id="formats">
   <div class="s-label">Supported Formats</div>
-  <div class="s-title">6 formats. Read, convert, validate.</div>
+  <div class="s-title">8 formats. Read, convert, validate.</div>
   <div class="s-desc">naql reads model headers directly — no heavy ML framework required.</div>
   <div class="fmt-grid">
     <div class="fmt glass" data-a>
@@ -294,6 +294,16 @@ footer a{color:var(--fg2)}
       <div class="icon">&#x1f917;</div>
       <h3>HuggingFace</h3>
       <p>Model directories with config, tokenizer, weights.</p>
+    </div>
+    <div class="fmt glass" data-a>
+      <div class="icon">&#x26a1;</div>
+      <h3>GPTQ</h3>
+      <p>GPU quantized models via AutoGPTQ. 4-bit inference.</p>
+    </div>
+    <div class="fmt glass" data-a>
+      <div class="icon">&#x1f9e0;</div>
+      <h3>AWQ</h3>
+      <p>Activation-aware weight quantization. High quality 4-bit.</p>
     </div>
   </div>
 </section>
@@ -340,16 +350,20 @@ footer a{color:var(--fg2)}
         <th>ONNX</th>
         <th>MLX</th>
         <th>PyTorch</th>
-        <th>HuggingFace</th>
+        <th>HF</th>
+        <th>GPTQ</th>
+        <th>AWQ</th>
       </tr>
     </thead>
     <tbody>
-      <tr><td>GGUF</td><td class="n">-</td><td class="y">Yes</td><td class="n">-</td><td class="y">Yes</td><td class="n">-</td><td class="y">Yes</td></tr>
-      <tr><td>SafeTensors</td><td class="y">Yes</td><td class="n">-</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td></tr>
-      <tr><td>ONNX</td><td class="n">-</td><td class="y">Yes</td><td class="n">-</td><td class="n">-</td><td class="y">Yes</td><td class="n">-</td></tr>
-      <tr><td>MLX</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">-</td><td class="n">-</td><td class="n">-</td><td class="y">Yes</td></tr>
-      <tr><td>PyTorch</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">-</td><td class="y">Yes</td></tr>
-      <tr><td>HuggingFace</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">-</td></tr>
+      <tr><td>GGUF</td><td class="n">-</td><td class="y">Yes</td><td class="n">-</td><td class="y">Yes</td><td class="n">-</td><td class="y">Yes</td><td class="n">-</td><td class="n">-</td></tr>
+      <tr><td>SafeTensors</td><td class="y">Yes</td><td class="n">-</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">-</td><td class="n">-</td></tr>
+      <tr><td>ONNX</td><td class="n">-</td><td class="y">Yes</td><td class="n">-</td><td class="n">-</td><td class="y">Yes</td><td class="n">-</td><td class="n">-</td><td class="n">-</td></tr>
+      <tr><td>MLX</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">-</td><td class="n">-</td><td class="n">-</td><td class="y">Yes</td><td class="n">-</td><td class="n">-</td></tr>
+      <tr><td>PyTorch</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">-</td><td class="y">Yes</td><td class="n">-</td><td class="n">-</td></tr>
+      <tr><td>HuggingFace</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">-</td><td class="y">Yes</td><td class="y">Yes</td></tr>
+      <tr><td>GPTQ</td><td class="y">Yes</td><td class="n">-</td><td class="n">-</td><td class="n">-</td><td class="n">-</td><td class="n">-</td><td class="n">-</td><td class="n">-</td></tr>
+      <tr><td>AWQ</td><td class="y">Yes</td><td class="n">-</td><td class="n">-</td><td class="n">-</td><td class="n">-</td><td class="n">-</td><td class="n">-</td><td class="n">-</td></tr>
     </tbody>
   </table>
   </div>
@@ -357,12 +371,13 @@ footer a{color:var(--fg2)}
 
 <section class="section" id="commands">
   <div class="s-label">Commands</div>
-  <div class="s-title">6 commands. Zero config.</div>
+  <div class="s-title">7 commands. Zero config.</div>
   <div class="cmd-grid">
     <div class="cmd glass" data-a><h3>inspect</h3><p>Read model format, size, quantization, layer count, and vocab. Works on files and directories.</p></div>
     <div class="cmd glass" data-a><h3>arabic</h3><p>Scan tokenizer vocab for Arabic tokens. Reports coverage, character presence, and script distribution.</p></div>
     <div class="cmd glass" data-a><h3>convert</h3><p>Convert between formats. Generates the command, runs it, and validates Arabic tokenizer preservation.</p></div>
     <div class="cmd glass" data-a><h3>validate</h3><p>Compare source and target after conversion. Checks vocab alignment, token mapping, and Arabic integrity.</p></div>
+    <div class="cmd glass" data-a><h3>diff</h3><p>Compare two models side by side. Shows field-level differences with Arabic token delta.</p></div>
     <div class="cmd glass" data-a><h3>formats</h3><p>List supported formats with detection rules, file extensions, and available conversion paths.</p></div>
     <div class="cmd glass" data-a><h3>explain</h3><p>Show how naql works — format detection pipeline, conversion strategy, and Arabic validation logic.</p></div>
   </div>
@@ -393,6 +408,15 @@ footer a{color:var(--fg2)}
 <span class="p">$ </span><span class="c">naql validate model/ model-mlx/</span>
 <span class="out">Vocab match: 151,936/151,936  Arabic tokens: preserved  Status: OK</span>
     </div>
+  </div>
+</section>
+
+<section class="section" id="demo">
+  <div class="s-label">Demo</div>
+  <div class="s-title">See it in action.</div>
+  <div class="s-desc">Inspect, convert, and validate — all from the terminal.</div>
+  <div style="text-align:center" data-a>
+    <img src="demo.gif" alt="naql demo — inspect, convert, and validate models from the terminal" style="max-width:100%;border-radius:var(--radius);border:1px solid var(--glass-border);" loading="lazy">
   </div>
 </section>
 

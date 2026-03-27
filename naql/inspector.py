@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import struct
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -48,14 +49,81 @@ class ModelInfo:
 # Arabic Unicode block: U+0600 .. U+06FF
 _ARABIC_RANGE = range(0x0600, 0x06FF + 1)
 
+# Common Arabic words expected as single tokens in a good Arabic tokenizer.
+_COMMON_ARABIC_WORDS = [
+    "\u0627\u0644\u0630\u0643\u0627\u0621",      # الذكاء
+    "\u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064a",  # الاصطناعي
+    "\u0645\u0631\u062d\u0628\u0627",      # مرحبا
+    "\u0627\u0644\u0639\u0627\u0644\u0645",  # العالم
+    "\u0628\u0633\u0645",          # بسم
+    "\u0627\u0644\u0644\u0647",      # الله
+]
+
+
+def _has_arabic_char(text: str) -> bool:
+    """Return *True* if *text* contains at least one Arabic character."""
+    return any(ord(ch) in _ARABIC_RANGE for ch in text)
+
+
+def _count_arabic_bigrams(tokens: list[str]) -> int:
+    """Count tokens that are Arabic bigrams or trigrams (2-3 Arabic chars)."""
+    count = 0
+    for token in tokens:
+        arabic_chars = [ch for ch in token if ord(ch) in _ARABIC_RANGE]
+        if 2 <= len(arabic_chars) <= 3 and len(arabic_chars) == len(token.strip()):
+            count += 1
+    return count
+
+
+def _check_common_arabic_words(tokens: list[str]) -> tuple[int, list[str]]:
+    """Check which common Arabic words appear as single tokens.
+
+    Returns (count_found, list_of_found_words).
+    """
+    token_set = set(tokens)
+    found: list[str] = []
+    for word in _COMMON_ARABIC_WORDS:
+        if word in token_set:
+            found.append(word)
+    return len(found), found
+
+
+def _calculate_arabic_efficiency(
+    arabic_count: int,
+    total_vocab: int,
+    bigram_count: int,
+    common_words_found: int,
+) -> int:
+    """Calculate an Arabic efficiency score from 0 to 100.
+
+    Weighted: 40% single-char ratio, 30% bigram presence, 30% common words.
+    """
+    if total_vocab == 0:
+        return 0
+
+    # Single-char coverage: ratio of Arabic tokens to total, capped at 10%
+    # being considered "excellent".
+    char_ratio = min(arabic_count / total_vocab / 0.10, 1.0)
+
+    # Bigram coverage: expect at least 500 bigrams for a good tokenizer.
+    bigram_ratio = min(bigram_count / 500, 1.0)
+
+    # Common words: 6 target words.
+    common_ratio = common_words_found / len(_COMMON_ARABIC_WORDS)
+
+    score = int(char_ratio * 40 + bigram_ratio * 30 + common_ratio * 30)
+    return min(score, 100)
+
 
 def check_arabic_tokenizer(path: str | Path) -> dict:
     """Check whether a tokenizer at *path* includes Arabic tokens.
 
     Looks for ``tokenizer.json`` or ``tokenizer.model`` inside the given
-    directory (or treats *path* itself as a tokenizer file).  Returns a
-    dict with keys: *has_arabic*, *arabic_token_count*, *total_vocab*,
-    *arabic_ratio*, *tokenizer_type*.
+    directory (or treats *path* itself as a tokenizer file).  Also checks
+    GGUF embedded tokenizers.  Returns a dict with keys: *has_arabic*,
+    *arabic_token_count*, *total_vocab*, *arabic_ratio*, *tokenizer_type*,
+    *arabic_bigram_count*, *common_words_found*, *common_words_list*,
+    *arabic_efficiency_score*.
     """
     p = Path(path)
 
@@ -65,20 +133,30 @@ def check_arabic_tokenizer(path: str | Path) -> dict:
         "total_vocab": 0,
         "arabic_ratio": 0.0,
         "tokenizer_type": "unknown",
+        "arabic_bigram_count": 0,
+        "common_words_found": 0,
+        "common_words_list": [],
+        "arabic_efficiency_score": 0,
     }
+
+    # Check if path is a GGUF file with embedded tokenizer.
+    if p.is_file() and p.suffix.lower() == ".gguf":
+        return _check_arabic_gguf_tokenizer(p)
 
     tokenizer_path = _find_tokenizer_file(p)
     if tokenizer_path is None:
+        # If the directory contains a GGUF file, try its embedded tokenizer.
+        if p.is_dir():
+            gguf_files = list(p.glob("*.gguf"))
+            if gguf_files:
+                return _check_arabic_gguf_tokenizer(gguf_files[0])
         return result
 
     if tokenizer_path.name == "tokenizer.json":
         return _check_arabic_json_tokenizer(tokenizer_path)
 
     if tokenizer_path.name == "tokenizer.model":
-        result["tokenizer_type"] = "sentencepiece"
-        # SentencePiece .model files are protobuf — we cannot parse them
-        # without the sentencepiece library, so we report what we can.
-        return result
+        return _check_arabic_sentencepiece_tokenizer(tokenizer_path)
 
     return result
 
@@ -109,6 +187,10 @@ def _check_arabic_json_tokenizer(path: Path) -> dict:
             "total_vocab": 0,
             "arabic_ratio": 0.0,
             "tokenizer_type": "unknown",
+            "arabic_bigram_count": 0,
+            "common_words_found": 0,
+            "common_words_list": [],
+            "arabic_efficiency_score": 0,
         }
 
     model_section = data.get("model", {})
@@ -117,12 +199,15 @@ def _check_arabic_json_tokenizer(path: Path) -> dict:
 
     tokenizer_type = model_section.get("type", "unknown")
 
-    arabic_count = 0
-    for token in vocab:
-        if any(ord(ch) in _ARABIC_RANGE for ch in token):
-            arabic_count += 1
+    token_list = list(vocab.keys())
+    arabic_count = sum(1 for t in token_list if _has_arabic_char(t))
+    bigram_count = _count_arabic_bigrams(token_list)
+    common_count, common_list = _check_common_arabic_words(token_list)
 
     ratio = arabic_count / total if total else 0.0
+    efficiency = _calculate_arabic_efficiency(
+        arabic_count, total, bigram_count, common_count,
+    )
 
     return {
         "has_arabic": arabic_count > 0,
@@ -130,7 +215,149 @@ def _check_arabic_json_tokenizer(path: Path) -> dict:
         "total_vocab": total,
         "arabic_ratio": ratio,
         "tokenizer_type": tokenizer_type,
+        "arabic_bigram_count": bigram_count,
+        "common_words_found": common_count,
+        "common_words_list": common_list,
+        "arabic_efficiency_score": efficiency,
     }
+
+
+def _check_arabic_sentencepiece_tokenizer(path: Path) -> dict:
+    """Scan a SentencePiece ``.model`` file for Arabic UTF-8 byte sequences.
+
+    SentencePiece ``.model`` files are serialised protobuf.  We do a raw
+    binary scan rather than requiring the ``sentencepiece`` library.
+    Arabic UTF-8 bytes start with 0xD8-0xDB (first byte of 2-byte Arabic).
+    """
+    result: dict = {
+        "has_arabic": False,
+        "arabic_token_count": 0,
+        "total_vocab": 0,
+        "arabic_ratio": 0.0,
+        "tokenizer_type": "sentencepiece",
+        "arabic_bigram_count": 0,
+        "common_words_found": 0,
+        "common_words_list": [],
+        "arabic_efficiency_score": 0,
+    }
+
+    try:
+        raw = path.read_bytes()
+    except OSError:
+        return result
+
+    # Extract printable UTF-8 string-like segments from the protobuf.
+    # SentencePiece tokens are stored as field type 2 (length-delimited)
+    # in the protobuf wire format.  We use a heuristic: find sequences
+    # of valid UTF-8 that contain Arabic characters.
+    #
+    # Arabic UTF-8 encoding: U+0600..U+06FF maps to bytes D8 80..DB BF.
+    arabic_token_count = 0
+    total_tokens_estimate = 0
+    arabic_tokens: list[str] = []
+
+    # Scan for length-delimited strings in protobuf — look for UTF-8
+    # sequences between 1 and 50 bytes that decode cleanly.
+    i = 0
+    while i < len(raw) - 1:
+        # Heuristic: look for Arabic first bytes (0xD8..0xDB)
+        if 0xD8 <= raw[i] <= 0xDB and i + 1 < len(raw) and 0x80 <= raw[i + 1] <= 0xBF:
+            # Found potential Arabic UTF-8 — back-scan for token start.
+            # Try to decode a window around this position.
+            start = max(0, i - 30)
+            end = min(len(raw), i + 50)
+            try:
+                snippet = raw[start:end].decode("utf-8", errors="ignore")
+                # Extract Arabic substrings.
+                for match in re.finditer(r'[\u0600-\u06FF]+', snippet):
+                    token_text = match.group()
+                    arabic_tokens.append(token_text)
+            except Exception:
+                pass
+            i += 2
+        else:
+            i += 1
+
+    # Deduplicate — each unique Arabic piece counts once.
+    unique_arabic = set(arabic_tokens)
+    arabic_token_count = len(unique_arabic)
+
+    # Estimate total vocab from file size heuristic (rough).
+    # A typical SentencePiece model has ~30 bytes per token on average.
+    total_tokens_estimate = max(len(raw) // 30, arabic_token_count)
+
+    # Count bigrams in unique tokens.
+    bigram_count = _count_arabic_bigrams(list(unique_arabic))
+    common_count, common_list = _check_common_arabic_words(list(unique_arabic))
+
+    ratio = arabic_token_count / total_tokens_estimate if total_tokens_estimate else 0.0
+    efficiency = _calculate_arabic_efficiency(
+        arabic_token_count, total_tokens_estimate, bigram_count, common_count,
+    )
+
+    result.update({
+        "has_arabic": arabic_token_count > 0,
+        "arabic_token_count": arabic_token_count,
+        "total_vocab": total_tokens_estimate,
+        "arabic_ratio": ratio,
+        "arabic_bigram_count": bigram_count,
+        "common_words_found": common_count,
+        "common_words_list": common_list,
+        "arabic_efficiency_score": efficiency,
+    })
+    return result
+
+
+def _check_arabic_gguf_tokenizer(path: Path) -> dict:
+    """Extract vocab from a GGUF file's embedded tokenizer and check Arabic.
+
+    Reads the ``tokenizer.ggml.tokens`` array from the GGUF metadata.
+    """
+    result: dict = {
+        "has_arabic": False,
+        "arabic_token_count": 0,
+        "total_vocab": 0,
+        "arabic_ratio": 0.0,
+        "tokenizer_type": "gguf_internal",
+        "arabic_bigram_count": 0,
+        "common_words_found": 0,
+        "common_words_list": [],
+        "arabic_efficiency_score": 0,
+    }
+
+    try:
+        info = inspect_gguf(path)
+    except Exception:
+        return result
+
+    kv_pairs = info.metadata.get("kv_pairs", {})
+    tokens = kv_pairs.get("tokenizer.ggml.tokens")
+
+    if not isinstance(tokens, list):
+        return result
+
+    total = len(tokens)
+    arabic_count = sum(1 for t in tokens if isinstance(t, str) and _has_arabic_char(t))
+    str_tokens = [t for t in tokens if isinstance(t, str)]
+    bigram_count = _count_arabic_bigrams(str_tokens)
+    common_count, common_list = _check_common_arabic_words(str_tokens)
+
+    ratio = arabic_count / total if total else 0.0
+    efficiency = _calculate_arabic_efficiency(
+        arabic_count, total, bigram_count, common_count,
+    )
+
+    result.update({
+        "has_arabic": arabic_count > 0,
+        "arabic_token_count": arabic_count,
+        "total_vocab": total,
+        "arabic_ratio": ratio,
+        "arabic_bigram_count": bigram_count,
+        "common_words_found": common_count,
+        "common_words_list": common_list,
+        "arabic_efficiency_score": efficiency,
+    })
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -163,6 +390,10 @@ def _detect_directory_format(path: Path) -> str:
     """Detect format for a directory containing model files."""
     has_config = (path / "config.json").is_file()
 
+    # JANG: check before MLX since JANG is a subset of MLX format.
+    if _is_jang_directory(path):
+        return "jang"
+
     # MLX: directory with weights/ folder containing .npz or .safetensors
     weights_dir = path / "weights"
     if weights_dir.is_dir():
@@ -188,6 +419,45 @@ def _detect_directory_format(path: Path) -> str:
         return "mlx"
 
     return "unknown"
+
+
+def _is_jang_directory(path: Path) -> bool:
+    """Return *True* if *path* looks like a JANG model directory.
+
+    JANG is an MLX variant that uses mixed-bit quantization.  Detected by:
+    - Directory name contains "JANG" (case-insensitive), OR
+    - ``config.json`` has a ``"quantization"`` key with mixed bit values
+      (e.g. different bits_per_weight for attention vs MLP layers).
+    """
+    if "jang" in path.name.lower():
+        config_path = path / "config.json"
+        if config_path.is_file():
+            return True
+
+    config_path = path / "config.json"
+    if not config_path.is_file():
+        return False
+
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+
+    quantization = config.get("quantization")
+    if not isinstance(quantization, dict):
+        return False
+
+    # JANG uses mixed-bit quantization — look for group-specific configs
+    # or a "group_size" alongside multiple "bits" values in nested dicts.
+    group_bits: set[int] = set()
+    for key, value in quantization.items():
+        if isinstance(value, dict) and "bits" in value:
+            group_bits.add(value["bits"])
+        elif key == "bits":
+            group_bits.add(value)
+
+    # Mixed bits means at least 2 different bit widths.
+    return len(group_bits) >= 2
 
 
 def _detect_file_format(path: Path) -> str:
@@ -243,8 +513,10 @@ def inspect_gguf(path: str | Path) -> ModelInfo:
     """Parse a GGUF file header and extract metadata.
 
     Reads the version, tensor count, and metadata key-value pairs from
-    the binary header.  Architecture, vocab size, and context length are
-    extracted from the metadata when available.
+    the binary header.  Architecture, vocab size, context length, and
+    architecture-specific metadata (attention heads, layers, embedding
+    dimensions) are extracted.  Individual tensor info (names, shapes,
+    quantization types) is stored in ``metadata["tensors"]``.
     """
     p = Path(path)
     size_mb = p.stat().st_size / (1024 * 1024)
@@ -253,6 +525,7 @@ def inspect_gguf(path: str | Path) -> ModelInfo:
     architecture: str | None = None
     vocab_size: int | None = None
     context_length: int | None = None
+    num_parameters: int | None = None
 
     try:
         with open(p, "rb") as f:
@@ -287,6 +560,51 @@ def inspect_gguf(path: str | Path) -> ModelInfo:
             if ctx_key and ctx_key in kv_pairs:
                 context_length = kv_pairs[ctx_key]
 
+            # --- Architecture-specific metadata ---
+            if architecture:
+                arch_meta: dict = {}
+                head_count_key = f"{architecture}.attention.head_count"
+                if head_count_key in kv_pairs:
+                    arch_meta["attention_heads"] = kv_pairs[head_count_key]
+                head_count_kv_key = f"{architecture}.attention.head_count_kv"
+                if head_count_kv_key in kv_pairs:
+                    arch_meta["attention_heads_kv"] = kv_pairs[head_count_kv_key]
+                block_count_key = f"{architecture}.block_count"
+                if block_count_key in kv_pairs:
+                    arch_meta["layers"] = kv_pairs[block_count_key]
+                embed_key = f"{architecture}.embedding_length"
+                if embed_key in kv_pairs:
+                    arch_meta["embedding_length"] = kv_pairs[embed_key]
+                feed_forward_key = f"{architecture}.feed_forward_length"
+                if feed_forward_key in kv_pairs:
+                    arch_meta["feed_forward_length"] = kv_pairs[feed_forward_key]
+                if arch_meta:
+                    metadata["architecture_details"] = arch_meta
+
+            # --- Count Arabic tokens in GGUF embedded vocab ---
+            if isinstance(vocab_size_raw, list):
+                arabic_count = sum(
+                    1 for t in vocab_size_raw
+                    if isinstance(t, str) and _has_arabic_char(t)
+                )
+                metadata["arabic_token_count"] = arabic_count
+
+            # --- Read tensor info from the header ---
+            tensors = _read_gguf_tensor_info(f, tensor_count, version)
+            if tensors:
+                metadata["tensors"] = tensors
+                # Estimate parameters from tensor shapes.
+                total_params = 0
+                for ti in tensors:
+                    shape = ti.get("shape", [])
+                    if shape:
+                        params = 1
+                        for dim in shape:
+                            params *= dim
+                        total_params += params
+                if total_params > 0:
+                    num_parameters = total_params
+
     except (OSError, struct.error) as exc:
         metadata["error"] = str(exc)
 
@@ -300,7 +618,7 @@ def inspect_gguf(path: str | Path) -> ModelInfo:
         path=str(p),
         format="gguf",
         size_mb=size_mb,
-        num_parameters=None,
+        num_parameters=num_parameters,
         architecture=architecture,
         vocab_size=vocab_size,
         has_tokenizer=has_tokenizer,
@@ -368,7 +686,10 @@ def _read_gguf_value(f, value_type: int):
         count = struct.unpack("<Q", f.read(8))[0]
         # For large arrays (e.g. token lists) only store the count to
         # avoid reading gigabytes of vocab data into memory.
+        # Exception: string arrays up to 300k are read (tokenizer vocab).
         if count > 10_000:
+            if element_type == _GGUF_TYPE_STRING and count <= 300_000:
+                return [_read_gguf_value(f, element_type) for _ in range(count)]
             # Skip past the array data — estimate sizes for common types.
             _skip_gguf_array(f, element_type, count)
             return count
@@ -415,6 +736,47 @@ def _read_gguf_metadata(f, kv_count: int) -> dict:
             break
 
     return pairs
+
+
+# GGUF tensor quantization type names (from ggml-common.h).
+_GGUF_TENSOR_TYPE_NAMES = {
+    0: "F32", 1: "F16", 2: "Q4_0", 3: "Q4_1", 6: "Q5_0", 7: "Q5_1",
+    8: "Q8_0", 9: "Q8_1", 10: "Q2_K", 11: "Q3_K", 12: "Q4_K",
+    13: "Q5_K", 14: "Q6_K", 15: "Q8_K", 16: "IQ2_XXS", 17: "IQ2_XS",
+    18: "IQ3_XXS", 19: "IQ1_S", 20: "IQ4_NL", 21: "IQ3_S", 22: "IQ2_S",
+    23: "IQ4_XS", 24: "I8", 25: "I16", 26: "I32", 27: "I64",
+    28: "F64", 29: "IQ1_M",
+}
+
+
+def _read_gguf_tensor_info(f, tensor_count: int, version: int) -> list[dict]:
+    """Read tensor info entries from the GGUF header.
+
+    Each tensor info contains: name, n_dimensions, dimensions, type, offset.
+    Returns a list of dicts with keys: *name*, *shape*, *type*, *offset*.
+    """
+    tensors: list[dict] = []
+
+    for _ in range(tensor_count):
+        try:
+            name = _read_gguf_string(f)
+            n_dims = struct.unpack("<I", f.read(4))[0]
+            dims = [struct.unpack("<Q", f.read(8))[0] for _ in range(n_dims)]
+            tensor_type = struct.unpack("<I", f.read(4))[0]
+            offset = struct.unpack("<Q", f.read(8))[0]
+
+            type_name = _GGUF_TENSOR_TYPE_NAMES.get(tensor_type, f"type_{tensor_type}")
+
+            tensors.append({
+                "name": name,
+                "shape": dims,
+                "type": type_name,
+                "offset": offset,
+            })
+        except (struct.error, ValueError, OSError):
+            break
+
+    return tensors
 
 
 # ---------------------------------------------------------------------------
@@ -547,6 +909,109 @@ def inspect_mlx(path: str | Path) -> ModelInfo:
 
 
 # ---------------------------------------------------------------------------
+# JANG inspection
+# ---------------------------------------------------------------------------
+
+
+def inspect_jang(path: str | Path) -> ModelInfo:
+    """Inspect a JANG model directory (MLX mixed-bit quantization variant).
+
+    JANG directories contain ``config.json`` with a ``"quantization"``
+    section that specifies different bit widths for attention vs MLP
+    layers.  Extracts average bits, attention bits, and MLP bits.
+    """
+    p = Path(path)
+    size_mb = _directory_size_mb(p)
+    metadata: dict = {}
+
+    config_path = p / "config.json"
+    if not config_path.is_file():
+        return ModelInfo(
+            path=str(p), format="jang", size_mb=size_mb,
+            metadata={"error": "missing config.json"},
+        )
+
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return ModelInfo(
+            path=str(p), format="jang", size_mb=size_mb,
+            metadata={"error": str(exc)},
+        )
+
+    metadata["config"] = config
+
+    architecture = config.get("model_type") or config.get("architectures", [None])[0]
+    vocab_size = config.get("vocab_size")
+    context_length = (
+        config.get("max_position_embeddings")
+        or config.get("max_sequence_length")
+    )
+
+    # Parse JANG mixed-bit quantization details.
+    quant_config = config.get("quantization", {})
+    jang_meta: dict = {}
+    all_bits: list[int] = []
+    attention_bits: int | None = None
+    mlp_bits: int | None = None
+
+    if isinstance(quant_config, dict):
+        for key, value in quant_config.items():
+            if isinstance(value, dict) and "bits" in value:
+                bits = value["bits"]
+                all_bits.append(bits)
+                key_lower = key.lower()
+                if "attn" in key_lower or "attention" in key_lower or "self" in key_lower:
+                    attention_bits = bits
+                elif "mlp" in key_lower or "ffn" in key_lower or "feed" in key_lower:
+                    mlp_bits = bits
+            elif key == "bits":
+                all_bits.append(value)
+
+    if all_bits:
+        avg_bits = sum(all_bits) / len(all_bits)
+        jang_meta["average_bits"] = round(avg_bits, 2)
+        jang_meta["all_bits"] = all_bits
+    if attention_bits is not None:
+        jang_meta["attention_bits"] = attention_bits
+    if mlp_bits is not None:
+        jang_meta["mlp_bits"] = mlp_bits
+
+    metadata["jang_quantization"] = jang_meta
+
+    # Build quantization description string.
+    quant_parts: list[str] = []
+    if attention_bits is not None:
+        quant_parts.append(f"attn={attention_bits}bit")
+    if mlp_bits is not None:
+        quant_parts.append(f"mlp={mlp_bits}bit")
+    if all_bits and not quant_parts:
+        quant_parts.append(f"mixed-{'/'.join(str(b) for b in sorted(set(all_bits)))}bit")
+    quantization = "jang:" + ",".join(quant_parts) if quant_parts else "jang"
+
+    # Check for tokenizer.
+    has_tokenizer = _find_tokenizer_file(p) is not None
+    tokenizer_type: str | None = None
+    if (p / "tokenizer.json").is_file():
+        tokenizer_type = "json"
+    elif (p / "tokenizer.model").is_file():
+        tokenizer_type = "sentencepiece"
+
+    return ModelInfo(
+        path=str(p),
+        format="jang",
+        size_mb=size_mb,
+        architecture=architecture,
+        vocab_size=vocab_size,
+        has_tokenizer=has_tokenizer,
+        tokenizer_type=tokenizer_type,
+        quantization=quantization,
+        context_length=context_length,
+        metadata=metadata,
+    )
+
+
+# ---------------------------------------------------------------------------
 # HuggingFace inspection
 # ---------------------------------------------------------------------------
 
@@ -638,6 +1103,7 @@ def inspect_model(path: str | Path) -> ModelInfo:
     dispatch = {
         "gguf": inspect_gguf,
         "safetensors": inspect_safetensors,
+        "jang": inspect_jang,
         "mlx": inspect_mlx,
         "huggingface": inspect_huggingface,
     }
@@ -667,7 +1133,6 @@ def _guess_quantization(name: str) -> str | None:
 
     Common patterns: ``Q4_K_M``, ``Q8_0``, ``4bit``, ``8bit``, ``f16``.
     """
-    import re
 
     # GGUF quantization tags (Q4_K_M, Q5_0, IQ2_XS, etc.)
     m = re.search(r"[_\-\.]((?:I?Q\d+_\w+)|(?:F(?:16|32)))[_\-\.]", name, re.IGNORECASE)

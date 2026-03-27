@@ -10,6 +10,7 @@ from naql.display import (
     console,
     display_arabic_check,
     display_conversions,
+    display_diff,
     display_explain,
     display_info,
     display_json,
@@ -180,6 +181,27 @@ def _cmd_explain(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_diff(args: argparse.Namespace) -> int:
+    """Run the diff subcommand - compare two models side by side."""
+    from naql.inspector import inspect_model, check_arabic_tokenizer
+    from naql.converter import diff_models
+
+    source_info = inspect_model(args.source)
+    target_info = inspect_model(args.target)
+
+    source_arabic = check_arabic_tokenizer(args.source)
+    target_arabic = check_arabic_tokenizer(args.target)
+
+    diffs = diff_models(source_info, target_info, source_arabic, target_arabic)
+
+    if args.json:
+        display_json(diffs)
+    else:
+        display_diff(diffs, source_info, target_info)
+
+    return 0
+
+
 # ── Command building ─────────────────────────────────────────────
 
 
@@ -305,7 +327,7 @@ def build_parser() -> argparse.ArgumentParser:
     convert_parser.add_argument(
         "--to",
         required=True,
-        choices=["gguf", "mlx", "onnx", "safetensors", "hf"],
+        choices=["gguf", "mlx", "onnx", "safetensors", "hf", "gptq", "awq"],
         help="Target format",
     )
     convert_parser.add_argument(
@@ -338,6 +360,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to converted model",
     )
     validate_parser.add_argument(
+        "--json",
+        action="store_true",
+        default=False,
+        help="Output results as JSON",
+    )
+
+    # ── diff ──
+    diff_parser = subparsers.add_parser(
+        "diff", help="Compare two models side by side"
+    )
+    diff_parser.add_argument(
+        "source",
+        help="Path to first model (source)",
+    )
+    diff_parser.add_argument(
+        "target",
+        help="Path to second model (target)",
+    )
+    diff_parser.add_argument(
         "--json",
         action="store_true",
         default=False,
@@ -386,6 +427,7 @@ def main(argv: list[str] | None = None) -> NoReturn:
         "arabic": _cmd_arabic,
         "convert": _cmd_convert,
         "validate": _cmd_validate,
+        "diff": _cmd_diff,
         "formats": _cmd_formats,
         "explain": _cmd_explain,
     }

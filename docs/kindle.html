@@ -206,7 +206,7 @@ footer a{color:var(--ink2)}
 
 <div class="stat-box" data-a>
   <div class="stat-inner">
-    <span class="num">6 formats</span> supported &middot; Arabic tokenizer validation &middot; lightweight — no torch/mlx/onnx dependency
+    <span class="num">8 formats</span> supported &middot; GPTQ/AWQ aware &middot; Arabic tokenizer validation &middot; lightweight
   </div>
 </div>
 
@@ -233,7 +233,7 @@ footer a{color:var(--ink2)}
 
 <section class="section" id="formats">
   <div class="ch-num">Chapter II</div>
-  <div class="ch-title">6 Formats</div>
+  <div class="ch-title">8 Formats</div>
   <div class="ch-desc">Read model headers directly. No heavy framework required.</div>
   <ul class="fmt-list" data-a>
     <li><span class="name">GGUF</span><br><span class="ext">llama.cpp quantized models — .gguf files</span></li>
@@ -242,6 +242,8 @@ footer a{color:var(--ink2)}
     <li><span class="name">MLX</span><br><span class="ext">Apple MLX framework — weights.npz + config.json</span></li>
     <li><span class="name">PyTorch</span><br><span class="ext">Native checkpoints — .pt, .bin files</span></li>
     <li><span class="name">HuggingFace</span><br><span class="ext">Model directories with config, tokenizer, weights</span></li>
+    <li><span class="name">GPTQ</span><br><span class="ext">GPU quantized models via AutoGPTQ — 4-bit inference</span></li>
+    <li><span class="name">AWQ</span><br><span class="ext">Activation-aware weight quantization — high quality 4-bit</span></li>
   </ul>
 </section>
 
@@ -292,15 +294,19 @@ footer a{color:var(--ink2)}
         <th>MLX</th>
         <th>PyTorch</th>
         <th>HF</th>
+        <th>GPTQ</th>
+        <th>AWQ</th>
       </tr>
     </thead>
     <tbody>
-      <tr><td>GGUF</td><td class="n">-</td><td class="y">Yes</td><td class="n">-</td><td class="y">Yes</td><td class="n">-</td><td class="y">Yes</td></tr>
-      <tr><td>SafeTensors</td><td class="y">Yes</td><td class="n">-</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td></tr>
-      <tr><td>ONNX</td><td class="n">-</td><td class="y">Yes</td><td class="n">-</td><td class="n">-</td><td class="y">Yes</td><td class="n">-</td></tr>
-      <tr><td>MLX</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">-</td><td class="n">-</td><td class="n">-</td><td class="y">Yes</td></tr>
-      <tr><td>PyTorch</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">-</td><td class="y">Yes</td></tr>
-      <tr><td>HuggingFace</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">-</td></tr>
+      <tr><td>GGUF</td><td class="n">-</td><td class="y">Yes</td><td class="n">-</td><td class="y">Yes</td><td class="n">-</td><td class="y">Yes</td><td class="n">-</td><td class="n">-</td></tr>
+      <tr><td>SafeTensors</td><td class="y">Yes</td><td class="n">-</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">-</td><td class="n">-</td></tr>
+      <tr><td>ONNX</td><td class="n">-</td><td class="y">Yes</td><td class="n">-</td><td class="n">-</td><td class="y">Yes</td><td class="n">-</td><td class="n">-</td><td class="n">-</td></tr>
+      <tr><td>MLX</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">-</td><td class="n">-</td><td class="n">-</td><td class="y">Yes</td><td class="n">-</td><td class="n">-</td></tr>
+      <tr><td>PyTorch</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">-</td><td class="y">Yes</td><td class="n">-</td><td class="n">-</td></tr>
+      <tr><td>HuggingFace</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">-</td><td class="y">Yes</td><td class="y">Yes</td></tr>
+      <tr><td>GPTQ</td><td class="y">Yes</td><td class="n">-</td><td class="n">-</td><td class="n">-</td><td class="n">-</td><td class="n">-</td><td class="n">-</td><td class="n">-</td></tr>
+      <tr><td>AWQ</td><td class="y">Yes</td><td class="n">-</td><td class="n">-</td><td class="n">-</td><td class="n">-</td><td class="n">-</td><td class="n">-</td><td class="n">-</td></tr>
     </tbody>
   </table>
   </div>
@@ -311,12 +317,13 @@ footer a{color:var(--ink2)}
 <section class="section" id="commands">
   <div class="ch-num">Chapter V</div>
   <div class="ch-title">Commands</div>
-  <div class="ch-desc">6 commands. Zero config.</div>
+  <div class="ch-desc">7 commands. Zero config.</div>
   <ul class="cmd-list" data-a>
     <li><span class="flag">inspect</span><br><span class="desc">Read model format, size, quantization, layers, and vocab</span></li>
     <li><span class="flag">arabic</span><br><span class="desc">Scan tokenizer vocab for Arabic token coverage</span></li>
     <li><span class="flag">convert</span><br><span class="desc">Convert between formats with Arabic validation</span></li>
     <li><span class="flag">validate</span><br><span class="desc">Compare source and target after conversion</span></li>
+    <li><span class="flag">diff</span><br><span class="desc">Compare two models side by side with Arabic token delta</span></li>
     <li><span class="flag">formats</span><br><span class="desc">List supported formats and conversion paths</span></li>
     <li><span class="flag">explain</span><br><span class="desc">Show how naql works — detection, conversion, validation</span></li>
   </ul>
@@ -349,6 +356,17 @@ footer a{color:var(--ink2)}
 <span class="p">$ </span><span class="c">naql validate model/ model-mlx/</span>
 <span class="out">Vocab match: 151,936/151,936  Arabic tokens: preserved  OK</span>
     </div>
+  </div>
+</section>
+
+<div class="section"><hr></div>
+
+<section class="section" id="demo">
+  <div class="ch-num">Chapter VII</div>
+  <div class="ch-title">Demo</div>
+  <div class="ch-desc">See it in action.</div>
+  <div style="text-align:center" data-a>
+    <img src="demo.gif" alt="naql demo — inspect, convert, and validate models from the terminal" style="max-width:100%;border-radius:var(--radius);border:1px solid var(--paper3);" loading="lazy">
   </div>
 </section>
 

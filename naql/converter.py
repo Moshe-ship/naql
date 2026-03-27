@@ -120,6 +120,91 @@ CONVERSION_COMMANDS: dict[tuple[str, str], dict] = {
             "Check optimum docs for model compatibility.",
         ],
     },
+    # GPTQ quantization paths.
+    ("hf", "gptq"): {
+        "command": (
+            "python -m auto_gptq.quantize {src}"
+            " --output_dir {dst} --bits 4 --group_size 128"
+        ),
+        "tool": "auto-gptq",
+        "install": "pip install auto-gptq",
+        "notes": [
+            "GPTQ requires calibration data for quantization.",
+            "Add --dataset c4 or provide a custom calibration dataset.",
+            "Common configs: 4-bit group_size 128 (balanced), 4-bit group_size 64 (more accurate).",
+            "Requires a CUDA GPU for quantization (inference can run on CPU).",
+        ],
+    },
+    ("huggingface", "gptq"): {
+        "command": (
+            "python -m auto_gptq.quantize {src}"
+            " --output_dir {dst} --bits 4 --group_size 128"
+        ),
+        "tool": "auto-gptq",
+        "install": "pip install auto-gptq",
+        "notes": [
+            "GPTQ requires calibration data for quantization.",
+            "Add --dataset c4 or provide a custom calibration dataset.",
+            "Common configs: 4-bit group_size 128 (balanced), 4-bit group_size 64 (more accurate).",
+            "Requires a CUDA GPU for quantization (inference can run on CPU).",
+        ],
+    },
+    # AWQ quantization paths.
+    ("hf", "awq"): {
+        "command": (
+            "python -m awq.entry --model_path {src}"
+            " --w_bit 4 --q_group_size 128"
+            " --dump_awq {dst}"
+        ),
+        "tool": "autoawq",
+        "install": "pip install autoawq",
+        "notes": [
+            "AWQ (Activation-aware Weight Quantization) preserves salient weights.",
+            "Typically produces better quality than naive round-to-nearest quantization.",
+            "Requires a CUDA GPU for quantization.",
+            "After quantization, convert to GGUF with: llama.cpp/convert_hf_to_gguf.py --awq",
+        ],
+    },
+    ("huggingface", "awq"): {
+        "command": (
+            "python -m awq.entry --model_path {src}"
+            " --w_bit 4 --q_group_size 128"
+            " --dump_awq {dst}"
+        ),
+        "tool": "autoawq",
+        "install": "pip install autoawq",
+        "notes": [
+            "AWQ (Activation-aware Weight Quantization) preserves salient weights.",
+            "Typically produces better quality than naive round-to-nearest quantization.",
+            "Requires a CUDA GPU for quantization.",
+            "After quantization, convert to GGUF with: llama.cpp/convert_hf_to_gguf.py --awq",
+        ],
+    },
+    # GPTQ/AWQ -> GGUF paths (common post-quantization step).
+    ("gptq", "gguf"): {
+        "command": (
+            "python llama.cpp/convert_hf_to_gguf.py {src}"
+            " --outfile {dst} --outtype {quant}"
+        ),
+        "tool": "llama.cpp",
+        "install": "git clone https://github.com/ggerganov/llama.cpp && cd llama.cpp && make",
+        "notes": [
+            "GPTQ models can be converted to GGUF for use with llama.cpp/Ollama.",
+            "The converter will dequantize GPTQ weights and re-quantize to GGUF format.",
+        ],
+    },
+    ("awq", "gguf"): {
+        "command": (
+            "python llama.cpp/convert_hf_to_gguf.py {src}"
+            " --outfile {dst} --outtype {quant}"
+        ),
+        "tool": "llama.cpp",
+        "install": "git clone https://github.com/ggerganov/llama.cpp && cd llama.cpp && make",
+        "notes": [
+            "AWQ models can be converted to GGUF for use with llama.cpp/Ollama.",
+            "The converter will dequantize AWQ weights and re-quantize to GGUF format.",
+        ],
+    },
 }
 
 
@@ -272,6 +357,69 @@ def validate_conversion(
         )
 
     return issues
+
+
+# ---------------------------------------------------------------------------
+# Model diff
+# ---------------------------------------------------------------------------
+
+
+def diff_models(
+    source_info: ModelInfo,
+    target_info: ModelInfo,
+    source_arabic: dict,
+    target_arabic: dict,
+) -> list[dict]:
+    """Compare two models and return a list of field diffs.
+
+    Each diff is a dict with keys: *field*, *source*, *target*, *status*.
+    Status is one of ``"match"``, ``"mismatch"``, ``"warning"``.
+    """
+    diffs: list[dict] = []
+
+    def _add(field: str, src_val: object, tgt_val: object, *, warn_only: bool = False) -> None:
+        src_str = str(src_val) if src_val is not None else "unknown"
+        tgt_str = str(tgt_val) if tgt_val is not None else "unknown"
+        if src_str == tgt_str:
+            status = "match"
+        elif warn_only:
+            status = "warning"
+        else:
+            status = "mismatch"
+        diffs.append({"field": field, "source": src_str, "target": tgt_str, "status": status})
+
+    _add("Format", source_info.format, target_info.format)
+    _add("Architecture", source_info.architecture, target_info.architecture)
+    _add("Vocab Size", source_info.vocab_size, target_info.vocab_size)
+    _add("Parameters", source_info.num_parameters, target_info.num_parameters, warn_only=True)
+    _add("Quantization", source_info.quantization, target_info.quantization, warn_only=True)
+    _add("Context Length", source_info.context_length, target_info.context_length)
+    _add("Tokenizer", source_info.tokenizer_type, target_info.tokenizer_type, warn_only=True)
+    _add(
+        "Size",
+        f"{source_info.size_mb:.1f} MB",
+        f"{target_info.size_mb:.1f} MB",
+        warn_only=True,
+    )
+
+    # Arabic-specific diffs.
+    src_ar = source_arabic.get("arabic_token_count", 0)
+    tgt_ar = target_arabic.get("arabic_token_count", 0)
+    delta = tgt_ar - src_ar
+    delta_str = f"{delta:+d}" if delta != 0 else "0"
+    ar_status = "match" if delta == 0 else ("warning" if abs(delta) <= 10 else "mismatch")
+    diffs.append({
+        "field": "Arabic Tokens",
+        "source": str(src_ar),
+        "target": f"{tgt_ar} ({delta_str})",
+        "status": ar_status,
+    })
+
+    src_eff = source_arabic.get("arabic_efficiency_score", 0)
+    tgt_eff = target_arabic.get("arabic_efficiency_score", 0)
+    _add("Arabic Efficiency", f"{src_eff}/100", f"{tgt_eff}/100", warn_only=True)
+
+    return diffs
 
 
 # ---------------------------------------------------------------------------

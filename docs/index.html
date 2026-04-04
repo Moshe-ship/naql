@@ -213,6 +213,12 @@ footer a{color:var(--fg2)}
   .fmt-grid{grid-template-columns:1fr 1fr}
   .stat-pill .stat{font-size:.65rem}
 }
+  /* Small phone (iPhone SE/mini) */
+  @media (max-width: 375px) { body { font-size: 13px; } h1 { font-size: 1.6rem !important; } pre, code { font-size: .7rem !important; } }
+  /* Landscape phone */
+  @media (max-height: 500px) and (orientation: landscape) { header { padding-top: 1rem !important; min-height: auto !important; } }
+  /* Safe area for notched phones */
+  @supports (padding: env(safe-area-inset-top)) { body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); } }
 </style>
 </head>
 <body>
